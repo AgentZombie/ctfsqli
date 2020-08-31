@@ -41,9 +41,3 @@ docker run --rm -d
   --user ctfsqli:ctfsqli \
   ctfsqli:latest
 ```
-
-docker run -d \
-    -p 8000:8000 \
-    --env TARGET_FLAG=flag:1234657 \
-    --user nobody:nogroup \
-    ctfsqli:latest
