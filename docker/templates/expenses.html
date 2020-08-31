@@ -1,0 +1,18 @@
+<html>
+    <head><title>Expenses</title></head>
+    <body>
+        <h1>Expenses</h1>
+        <form method="GET" action="/expenses">
+            <label>Filter:</label><input type="text" name="what" placeholder="taco" /><button>Submit</button>
+        </form>
+        <table>
+        {{ range .Rows }}
+            <tr>
+            {{ range . }}
+                <td>{{ . }}</td>
+            {{ end }}
+            </tr>
+        {{ end }}
+        </table>
+    </body>
+</html>
