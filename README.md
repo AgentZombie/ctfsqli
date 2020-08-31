@@ -22,3 +22,28 @@ go build -o docker/work/ctfsqli -ldflags="-s -w" main.go
 sqlite3 docker/work/ctf.db < db.sql
 docker build -t ctfsqli:latest docker
 ```
+
+## Running
+
+Configuration of the running app is handled through environment variables:
+
+- `TARGET_FLAG` - The flag value the user should recover
+- `DB_FILE` - Path to the DB file. You probably don't want to change this
+- `LISTEN` - `[<address>]:<port>` to listen on. This is better managed via `expose`
+- `TEMPLATE_DIR` - Path to HTML templates. This probably shouldn't be changed
+
+No storage volumes are required and the job can run with no privileges:
+
+```
+docker run --rm -d
+  -p <external port>:8000 \
+  --env TARGET_FLAG=<flag value> \
+  --user ctfsqli:ctfsqli \
+  ctfsqli:latest
+```
+
+docker run -d \
+    -p 8000:8000 \
+    --env TARGET_FLAG=flag:1234657 \
+    --user nobody:nogroup \
+    ctfsqli:latest
