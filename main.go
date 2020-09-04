@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func fatalIfError(err error, msg string) {
@@ -26,10 +26,6 @@ func main() {
 	if v := os.Getenv("LISTEN"); v != "" {
 		listen = v
 	}
-	dbFile := "out/ctf.db"
-	if v := os.Getenv("DB_FILE"); v != "" {
-		dbFile = v
-	}
 	templateDir := "out/templates"
 	if v := os.Getenv("TEMPLATE_DIR"); v != "" {
 		templateDir = v
@@ -38,16 +34,14 @@ func main() {
 	templates, err := template.ParseGlob(templateDir + "/*.html")
 	fatalIfError(err, "parsing templates")
 
-	db, err := sql.Open("sqlite3", "file:"+dbFile)
-	fatalIfError(err, "opening database")
-
-	db.SetMaxOpenConns(1)
+	db, err := sql.Open("mysql", "ctfrw:dDIESeNBAARaMapY0kc3Q@unix(/var/run/mysqld/mysqld.sock)/ctf")
+	fatalIfError(err, "opening database for writing")
 
 	_, err = db.Exec("UPDATE users SET password = ? WHERE username = 'ellie'", tFlag)
 	fatalIfError(err, "setting flag")
 	fatalIfError(db.Close(), "closing DB")
 
-	db, err = sql.Open("sqlite3", "file:"+dbFile+"?mode=ro")
+	db, err = sql.Open("mysql", "ctfro:CB2fwpYY5c+KpT2FxzDmaA@unix(/var/run/mysqld/mysqld.sock)/ctf")
 	fatalIfError(err, "reopening database")
 	defer db.Close()
 
@@ -57,6 +51,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/expenses", server.AuthWrap(server.Expenses))
+	mux.HandleFunc("/users", server.AuthWrap(server.Users))
 
 	log.Print("listening on ", listen)
 	fatalIfError(http.ListenAndServe(listen, mux), "listening")
@@ -82,7 +77,7 @@ func (s Server) AuthWrap(f func(http.ResponseWriter, *http.Request)) func(http.R
 
 func (s Server) Expenses(w http.ResponseWriter, r *http.Request) {
 	what := r.FormValue("what")
-	rows, err := s.db.Query("SELECT * FROM expenses WHERE what like '%" + what + "%'")
+	rows, err := s.db.Query("SELECT * FROM expenses WHERE what LIKE '%" + what + "%'")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -110,6 +105,40 @@ func (s Server) Expenses(w http.ResponseWriter, r *http.Request) {
 		"Rows": v,
 	}
 	if err := s.tmpl.ExecuteTemplate(w, "expenses.html", data); err != nil {
+		log.Print("executing template: ", err)
+	}
+}
+
+func (s Server) Users(w http.ResponseWriter, r *http.Request) {
+	what := r.FormValue("who")
+	rows, err := s.db.Query("SELECT username, '********', added FROM users WHERE username LIKE ?", "%"+what+"%")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	v := [][]interface{}{}
+	for rows.Next() {
+		cols, err := rows.Columns()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowVals := make([]interface{}, len(cols))
+		for i := range rowVals {
+			rowVals[i] = new(string)
+		}
+		if err := rows.Scan(rowVals...); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		v = append(v, rowVals)
+	}
+	w.Header().Set("Content-Type", "text/html")
+	data := map[string]interface{}{
+		"Rows": v,
+	}
+	if err := s.tmpl.ExecuteTemplate(w, "users.html", data); err != nil {
 		log.Print("executing template: ", err)
 	}
 }
