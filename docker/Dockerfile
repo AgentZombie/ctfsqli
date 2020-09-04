@@ -6,8 +6,7 @@ ENV TARGET_FLAG=flag:foobar
 
 RUN useradd -m ctfsqli
 RUN chown ctfsqli:ctfsqli /home/ctfsqli
-RUN apt update
-RUN apt install -y default-mysql-server
+RUN apt update && apt install --no-install-recommends -y default-mysql-server && rm -rf /var/lib/apt/lists/* /var/lib/mysql/ib_logfile*
 
 EXPOSE 8000/tcp
 
