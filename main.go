@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -30,6 +31,10 @@ func main() {
 	if v := os.Getenv("TEMPLATE_DIR"); v != "" {
 		templateDir = v
 	}
+	joelPass := "n0Clikkerz"
+	if v := os.Getenv("JOEL_PASS"); v != "" {
+		joelPass = v
+	}
 
 	templates, err := template.ParseGlob(templateDir + "/*.html")
 	fatalIfError(err, "parsing templates")
@@ -45,28 +50,41 @@ func main() {
 	fatalIfError(err, "reopening database")
 	defer db.Close()
 
-	server := Server{
-		db:   db,
-		tmpl: templates,
+	srv := server{
+		db:       db,
+		tmpl:     templates,
+		joelPass: joelPass,
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/expenses", server.AuthWrap(server.Expenses))
-	mux.HandleFunc("/users", server.AuthWrap(server.Users))
+	mux.HandleFunc("/", srv.AuthWrap(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/expenses", http.StatusMovedPermanently)
+	}))
+	mux.HandleFunc("/expenses", srv.AuthWrap(srv.Expenses))
+	mux.HandleFunc("/users", srv.AuthWrap(srv.Users))
+
+	hSrv := &http.Server{
+		Addr:         listen,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  20 * time.Second,
+	}
 
 	log.Print("listening on ", listen)
-	fatalIfError(http.ListenAndServe(listen, mux), "listening")
+	fatalIfError(hSrv.ListenAndServe(), "listening")
 }
 
-type Server struct {
-	db   *sql.DB
-	tmpl *template.Template
+type server struct {
+	db       *sql.DB
+	tmpl     *template.Template
+	joelPass string
 }
 
 // AuthWrap restricts calling the wrapped handler to authenticated requests
-func (s Server) AuthWrap(f func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func (s server) AuthWrap(f func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()
-		if !ok || user != "joel" || pass != "n0Clikkerz" {
+		if !ok || user != "joel" || pass != s.joelPass {
 			w.Header().Set("WWW-Authenticate", "Basic realm=expenses")
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
@@ -75,9 +93,13 @@ func (s Server) AuthWrap(f func(http.ResponseWriter, *http.Request)) func(http.R
 	}
 }
 
-func (s Server) Expenses(w http.ResponseWriter, r *http.Request) {
+// Expenses renders the expense table based on the database and user query. The
+// SQL query is build using string concatenation and is thus vulnerable to
+// injection.
+func (s server) Expenses(w http.ResponseWriter, r *http.Request) {
 	what := r.FormValue("what")
-	rows, err := s.db.Query("SELECT * FROM expenses WHERE what LIKE '%" + what + "%'")
+	ctx := r.Context()
+	rows, err := s.db.QueryContext(ctx, "SELECT * FROM expenses WHERE what LIKE '%"+what+"%'")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -109,9 +131,14 @@ func (s Server) Expenses(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s Server) Users(w http.ResponseWriter, r *http.Request) {
+// Users renders a restricted users table of user data. It's using a
+// parameterized statement and should be safe from SQLi. It's purpose is to
+// both frustrate users by offering a false-path to SQLi and to aid users by
+// providing information about the target table.
+func (s server) Users(w http.ResponseWriter, r *http.Request) {
 	what := r.FormValue("who")
-	rows, err := s.db.Query("SELECT username, '********', added FROM users WHERE username LIKE ?", "%"+what+"%")
+	ctx := r.Context()
+	rows, err := s.db.QueryContext(ctx, "SELECT username, '********', added FROM users WHERE username LIKE ?", "%"+what+"%")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
