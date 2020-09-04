@@ -59,7 +59,7 @@ func main() {
 	mux.HandleFunc("/expenses", server.AuthWrap(server.Expenses))
 
 	log.Print("listening on ", listen)
-	http.ListenAndServe(listen, mux)
+	fatalIfError(http.ListenAndServe(listen, mux), "listening")
 }
 
 type Server struct {
