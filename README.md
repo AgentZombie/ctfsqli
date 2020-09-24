@@ -39,6 +39,5 @@ docker run --rm -d
   -p <external port>:8000 \
   --env TARGET_FLAG=<flag value> \
   --env JOEL_PASS=<login password> \
-  --user ctfsqli:ctfsqli \
   ctfsqli:latest
 ```
